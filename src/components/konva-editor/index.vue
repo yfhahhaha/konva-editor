@@ -356,7 +356,10 @@
             >
               <template v-for="(shape, index) in shapes" :key="index">
                 <component
-                  :is="shape.type"
+                  :is="shape.type === 'v-text' ? KnText : shape.type"
+                  :ref="(el: any) => shapeRefs.set(shape.config.id, el)"
+                  v-model:shape-config="shape.config"
+                  :component-id="componentId"
                   :config="shape.config"
                   @dblclick="handleDblClick($event, index)"
                   @dragstart="handleShapeDragStart($event, index)"
@@ -365,22 +368,27 @@
                   @transformstart="handleTransformStart($event, index)"
                   @transform="handleTransform($event, index)"
                   @transformend="handleTransformEnd($event, index)"
+                  @editing="handleEditing(shape, $event)"
                 >
                   <template v-if="shape.children">
                     <component
-                      :is="child.type"
+                      :is="child.type === 'v-text' ? KnText : child.type"
                       v-for="(child, cIndex) in shape.children"
+                      :ref="(el: any) => shapeRefs.set(child.config.id, el)"
                       :key="cIndex"
+                      v-model:shape-config="child.config"
+                      :component-id="componentId"
                       :config="child.config"
                       @dblclick="handleDblClick($event, index, cIndex)"
                       @dragstart="handleShapeDragStart($event, index, cIndex)"
                       @dragmove="handleShapeDragMove($event, index, cIndex)"
                       @dragend="updateShape($event, index, cIndex)"
                       @transformstart="
-                        handleTransformStart($event, index, cIndex)
-                      "
+                          handleTransformStart($event, index, cIndex)
+                        "
                       @transform="handleTransform($event, index, cIndex)"
                       @transformend="handleTransformEnd($event, index, cIndex)"
+                      @editing="handleEditing(child, $event)"
                     />
                   </template>
                 </component>
@@ -452,6 +460,7 @@
       randomString
     } from './common'
     import { showToast } from '@/composables/toast'
+    import KnText from './kn-text.vue'
   
     type Shape = {
       type: string
@@ -637,9 +646,6 @@
       )
     })
   
-    // 选中v-label类型图层时，记录当前图层，用于编辑文本结束时，更新居中
-    const labelShape = ref<Shape | null>(null)
-  
     // 变换器配置
     const transformerBgConfig = {
       borderStrokeWidth: 3,
@@ -687,6 +693,9 @@
         icon: 'icon-to-bottom',
       },
     ]
+
+    // 图层实例Map
+    const shapeRefs = ref<Map<string, any>>(new Map())
   
     // 当前编辑的文字图层
     const editingTextItem = ref<any>(null)
@@ -695,7 +704,11 @@
     let txtBoundUpdateFunc = (newBox: any) => {}
   
     // 取消编辑
-    let cancelEdit: () => void = () => {}
+    let cancelEdit: () => void = () => {
+      if (editingTextItem.value && shapeRefs.value.has(editingTextItem.value.config.id)) {
+        shapeRefs.value.get(editingTextItem.value.config.id).cancelEdit()
+      }
+    }
   
     // 默认文字设置
     const defaultTextStyle = {
@@ -847,205 +860,14 @@
       })
       forbidHoverMenu.value = false
     }
-  
-    // 编辑文字, 如果是v-label类型，编辑其文案时，输入框宽度为父级宽度，定位left为0
-    const editText = (e: any, shape: any, parentWidth?: number) => {
-      if (isMultiLevelEdit.value) {
-        return
+
+    // 编辑中
+    const handleEditing = (shape: any, status: boolean) => {
+      if (status) {
+        editingTextItem.value = shape
+      } else {
+        editingTextItem.value = null
       }
-      textStyle.fontSize = shape.config.fontSize || defaultTextStyle.fontSize
-      textStyle.fontFamily =
-        shape.config.fontFamily || defaultTextStyle.fontFamily
-      textStyle.fill = shape.config.fill || defaultTextStyle.fill
-      textStyle.stroke = shape.config.stroke || defaultTextStyle.stroke
-      textStyle.strokeWidth =
-        shape.config.strokeWidth || defaultTextStyle.strokeWidth
-      textStyle.lineHeight =
-        shape.config.lineHeight || defaultTextStyle.lineHeight
-      shape.config.visible = false
-      editingTextItem.value = shape
-      textNode.value = e.target
-      const textNodeKonva = textNode.value
-      const maxHeight = stageSize.value.height - textNodeKonva.y()
-      // const stage = textNodeKonva.getStage()
-      const textPosition = textNodeKonva.absolutePosition()
-      // const stageBox = stage.container().getBoundingClientRect()
-      const areaPosition = {
-        x: textPosition.x,
-        y: textPosition.y,
-      }
-      // 文字偏差
-      const offset = {
-        x: 0,
-        y: (textNodeKonva.fontSize() - 10) * 0.1
-      }
-  
-      const textarea = document.createElement('textarea')
-      const parent = document.querySelector(
-        `#${componentId.value} #image-editor-stage`
-      )
-      parent?.appendChild(textarea)
-  
-      textarea.style.position = 'absolute'
-      textarea.style.top = areaPosition.y - offset.y + 'px'
-      textarea.style.left = parentWidth ? '0px' : areaPosition.x - offset.x + 'px'
-      const width = parentWidth || shape.config.width || textNodeKonva.width()
-      textarea.style.width = width + 'px'
-      textarea.style.height = textNodeKonva.height() + 'px'
-      textarea.style.fontSize = textNodeKonva.fontSize() + 'px'
-      const { fontStyle, fontWeight } = parseFontStyle(textNodeKonva.fontStyle())
-      textarea.style.fontStyle = fontStyle
-      textarea.style.fontWeight = fontWeight
-      textarea.style.border = 'none'
-      textarea.style.padding = shape.config.padding
-        ? `${shape.config.padding}px`
-        : '0px'
-      textarea.style.margin = '0px'
-      textarea.style.overflow = 'visible'
-      textarea.style.background = 'none'
-      textarea.style.outline = 'none'
-      textarea.style.resize = 'none'
-      textarea.style.lineHeight = typeof textNodeKonva?.lineHeight === 'function'
-        ? textNodeKonva?.lineHeight()
-        : 1
-      textarea.style.fontFamily = textNodeKonva?.fontFamily() || defaultTextStyle.fontFamily
-      textarea.style.transformOrigin = 'left top'
-      textarea.style.textAlign = textNodeKonva?.align()
-      textarea.style.color = textNodeKonva?.fill()
-      textarea.style.wordBreak = 'break-word'
-      textarea.style.whiteSpace = 'normal'
-      const w = textNodeKonva?.strokeWidth()
-      const s = textNodeKonva?.stroke()
-      if (w && s) {
-        textarea.style.textShadow = generateStrokeCss(w, s)
-      }
-  
-      const rotation = textNodeKonva.rotation()
-      let transform = ''
-      if (rotation) {
-        transform += 'rotateZ(' + rotation + 'deg)'
-      }
-      textarea.style.transform = transform
-  
-      // 输入 更新文字
-      const inputUpdate = (isComplete: boolean = true) => {
-        if (!editingTextItem.value) return
-        editingTextItem.value.config.text = textarea.value
-        editingTextItem.value.config.width = textarea.clientWidth
-        editingTextItem.value.config.height = textarea.clientHeight
-        if (isComplete) {
-          editingTextItem.value.config.visible = false
-        }
-        // 获取文本节点并计算宽度
-        const canvas = document.createElement('canvas')
-        const context = canvas.getContext('2d')
-        if (context && labelShape.value) {
-          context.font = `${editingTextItem.value.config.fontSize}px ${editingTextItem.value.config.fontFamily}`
-          const textWidth = context.measureText(
-            editingTextItem.value.config.text
-          ).width
-          // 计算居中位置
-          const centerX = (labelShape.value?.config.parentWidth - textWidth) / 2
-          labelShape.value.config.x = centerX
-          labelShape.value = null
-        }
-      }
-  
-      // 裁剪内容直到高度合适
-      const trimToFit = () => {
-        let text = textarea.value
-  
-        while (textarea.scrollHeight > maxHeight && text.length > 0) {
-          text = text.slice(0, -1) // 删除最后一个字符
-          textarea.value = text
-          textarea.style.height = 'auto'
-          textarea.style.height = textarea.scrollHeight + 'px'
-        }
-        inputUpdate(false)
-      }
-  
-      // 自动调整textarea高度
-      const autoResize = (e?: any) => {
-        inputUpdate(false)
-        nextTick(() => {
-          if (textarea.scrollHeight > textarea.clientHeight) {
-            textarea.style.height = textarea.scrollHeight + 'px' // 设置为内容高度)
-          }
-          // 检查是否超出 maxHeight
-          if (textarea.scrollHeight > maxHeight) {
-            trimToFit()
-          }
-  
-          textarea.focus()
-        })
-      }
-      // 下一帧执行
-      const nextAutoResize = () => {
-        requestAnimationFrame(() => {
-          autoResize()
-        })
-      }
-  
-      // 更新文字框边界
-      txtBoundUpdateFunc = (newBox: any) => {
-        textarea.style.width = newBox.width + 'px'
-        textarea.style.height = newBox.height + 'px'
-        textarea.style.top = newBox.y - offset.y + 'px'
-        textarea.style.left = newBox.x - offset.x + 'px'
-        nextTick(() => {
-          autoResize()
-        })
-      }
-  
-      // 获取 textarea 原型上的原始 setter
-      const descriptor = Object.getOwnPropertyDescriptor(
-        window.HTMLTextAreaElement.prototype,
-        'value'
-      )
-      const originalSetter = descriptor?.set
-      Object.defineProperty(textarea, 'value', {
-        set(val) {
-          originalSetter?.call(textarea, val)
-          autoResize()
-        },
-        get() {
-          return descriptor?.get?.call(textarea)
-        },
-      })
-  
-      textarea.value = textNodeKonva.text()
-  
-      function removeTextarea() {
-        if (!editingTextItem.value) return
-        textarea.removeEventListener('keydown', keydownHandler)
-        textarea.removeEventListener('input', autoResize)
-        textarea.removeEventListener('paste', nextAutoResize)
-        textarea.removeEventListener('blur', blurHandler)
-        textarea.parentNode?.removeChild(textarea)
-        if (editingTextItem.value) {
-          editingTextItem.value.config.visible = true
-          editingTextItem.value = null
-        }
-      }
-      cancelEdit = removeTextarea
-  
-      // 失焦
-      const blurHandler = () => {
-        inputUpdate()
-        removeTextarea()
-      }
-  
-      // 监听键盘事件
-      function keydownHandler(e: any) {
-        if (e.key === 'Enter' && !e.shiftKey) {
-          blurHandler()
-        }
-      }
-  
-      textarea.addEventListener('keydown', keydownHandler)
-      textarea.addEventListener('input', autoResize)
-      textarea.addEventListener('paste', nextAutoResize)
-      textarea.addEventListener('blur', blurHandler)
     }
   
     // 切换父/子图层选中
@@ -1139,16 +961,6 @@
         if ((shape.children?.length || cIndex !== undefined)) {
           handleLayerSelect(shape, index, cIndex)
         }
-      } else if (['v-text', 'v-text-path'].includes(shape.type)) {
-        const parentWidth =
-          shapes.value[index].type === 'v-label'
-            ? shapes.value[index].config.parentWidth
-            : 0
-        if (parentWidth) {
-          labelShape.value = shapes.value[index]
-        }
-        // 文字编辑
-        editText(e, shape, parentWidth)
       }
     }
   
