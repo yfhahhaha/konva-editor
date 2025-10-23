@@ -1,3 +1,4 @@
+import Konva from "konva"
 
 // 默认多边形裁剪圆角半径
 export const DEFAULT_POLYGON_RADIUS = 10
@@ -960,3 +961,211 @@ export function getGradientPointsByAngle(
   }
   return pos
 }
+
+/**
+ * 递归判断对象中非image/function属性是否一致，一致则返回true，否则返回false
+ * @param obj1 对象1
+ * @param obj2 对象2
+ * @param ignoreKeys 需要忽略的属性
+ * @param changeCb 变化回调
+ * @returns 是否一致
+ */
+export const isSameObject = (
+  obj1: any,
+  obj2: any,
+  ignoreKeys: string[] = [],
+  changeCb?: (key: string, val1: any, val2: any) => void,
+  seen = new WeakSet()
+): boolean => {
+  const ignoreKeysSet = new Set([...ignoreKeys])
+
+  // 引用类型循环检测
+  if (typeof obj1 === 'object' && obj1 !== null) {
+    if (seen.has(obj1)) return true
+    seen.add(obj1)
+  }
+
+  // 类型或 null 判断
+  if (obj1 === obj2) return true
+  if (obj1 === null || obj2 === null) return false
+  if (typeof obj1 !== typeof obj2) return false
+
+  // 函数 / 图片直接跳过比较
+  if (typeof obj1 === 'function' && typeof obj2 === 'function') return true
+  if (obj1?.tagName === 'IMG' && obj2?.tagName === 'IMG') return true
+
+  // 非对象直接比较
+  if (typeof obj1 !== 'object') return obj1 === obj2
+
+  // key 数量对比（排除 ignoreKeys）
+  const keys1 = Object.keys(obj1).filter((k) => !ignoreKeysSet.has(k))
+  const keys2 = Object.keys(obj2).filter((k) => !ignoreKeysSet.has(k))
+  if (keys1.length !== keys2.length) return false
+
+  let isSame = true
+
+  for (const key of keys1) {
+    const val1 = obj1[key]
+    const val2 = obj2[key]
+
+    // 函数/图片类型直接跳过
+    if (
+      (typeof val1 === 'function' && typeof val2 === 'function') ||
+      (val1?.tagName === 'IMG' && val2?.tagName === 'IMG')
+    ) {
+      continue
+    }
+
+    // 文本高度变化不记录
+    if (key === 'height' && 'text' in obj1) continue
+
+    if (typeof val1 === 'object' && typeof val2 === 'object') {
+      if (!isSameObject(val1, val2, ignoreKeys, changeCb, seen)) {
+        isSame = false
+      }
+    } else if (val1 !== val2) {
+      changeCb?.(key, val1, val2)
+      isSame = false
+    }
+  }
+
+  return isSame
+}
+
+// 将 CSS 色值解析为 RGBA
+export function parseCssColorToRGBA(
+  color: any
+): { r: number; g: number; b: number; a: number } | null {
+  if (!color || typeof color !== 'string') return null
+  const c = color.trim()
+  // #RGB / #RGBA / #RRGGBB / #RRGGBBAA
+  if (c[0] === '#') {
+    const hex = c.slice(1)
+    if (hex.length === 3 || hex.length === 4) {
+      const r = parseInt(hex[0] + hex[0], 16)
+      const g = parseInt(hex[1] + hex[1], 16)
+      const b = parseInt(hex[2] + hex[2], 16)
+      const a = hex.length === 4 ? parseInt(hex[3] + hex[3], 16) / 255 : 1
+      return { r, g, b, a }
+    }
+    if (hex.length === 6 || hex.length === 8) {
+      const r = parseInt(hex.slice(0, 2), 16)
+      const g = parseInt(hex.slice(2, 4), 16)
+      const b = parseInt(hex.slice(4, 6), 16)
+      const a = hex.length === 8 ? parseInt(hex.slice(6, 8), 16) / 255 : 1
+      return { r, g, b, a }
+    }
+  }
+  // rgb/rgba
+  const rgbMatch = c.match(/^rgba?\(([^)]+)\)$/i)
+  if (rgbMatch) {
+    const parts = rgbMatch[1].split(',').map((v) => v.trim())
+    if (parts.length >= 3) {
+      const r = Math.max(0, Math.min(255, parseFloat(parts[0])))
+      const g = Math.max(0, Math.min(255, parseFloat(parts[1])))
+      const b = Math.max(0, Math.min(255, parseFloat(parts[2])))
+      const a =
+        parts.length >= 4 ? Math.max(0, Math.min(1, parseFloat(parts[3]))) : 1
+      return { r, g, b, a }
+    }
+  }
+  // hsl/hsla -> 使用浏览器解析
+  try {
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+    ctx.fillStyle = '#000'
+    ctx.fillStyle = c
+    const norm = ctx.fillStyle // 规范化后的 rgb(a)
+    const m = /^rgba?\(([^)]+)\)$/i.exec(norm)
+    if (m) {
+      const parts = m[1].split(',').map((v) => v.trim())
+      const r = parseFloat(parts[0])
+      const g = parseFloat(parts[1])
+      const b = parseFloat(parts[2])
+      const a = parts.length >= 4 ? parseFloat(parts[3]) : 1
+      return { r, g, b, a }
+    }
+  } catch (err) {
+    // ignore
+  }
+  return null
+}
+
+// 计算 sRGB 相对亮度（0=黑 1=白）
+export function relativeLuminance(r: number, g: number, b: number): number {
+  const toLinear = (v: number) => {
+    const c = v / 255
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
+  }
+  const R = toLinear(r)
+  const G = toLinear(g)
+  const B = toLinear(b)
+  return 0.2126 * R + 0.7152 * G + 0.0722 * B
+}
+
+// 透明色在白底上的合成（避免用半透明色作为光标导致不可读）
+export function compositeOverWhite(c: {
+  r: number
+  g: number
+  b: number
+  a: number
+}) {
+  const a = isFinite(c.a) ? c.a : 1
+  if (a >= 1) return { r: c.r, g: c.g, b: c.b, a: 1 }
+  const r = Math.round(c.r * a + 255 * (1 - a))
+  const g = Math.round(c.g * a + 255 * (1 - a))
+  const b = Math.round(c.b * a + 255 * (1 - a))
+  return { r, g, b, a: 1 }
+}
+
+// 从节点的 stroke/fill 中挑更“深”的色，用作光标颜色
+export function pickDarkerCaretColor(node: any): string {
+  const strokeStr = node?.stroke?.() || '#ffffff'
+  const fillStr = node?.fill?.() || '#000000'
+  const stroke = parseCssColorToRGBA(strokeStr)
+  const fill = parseCssColorToRGBA(fillStr)
+  if (!stroke && !fill) return 'black'
+  if (stroke && !fill) {
+    const c = compositeOverWhite(stroke)
+    return `rgb(${c.r}, ${c.g}, ${c.b})`
+  }
+  if (!stroke && fill) {
+    const c = compositeOverWhite(fill)
+    return `rgb(${c.r}, ${c.g}, ${c.b})`
+  }
+  // 两者都存在，比较亮度，亮度小者更“深”
+  const cs = compositeOverWhite(stroke!)
+  const cf = compositeOverWhite(fill!)
+  const lumS = relativeLuminance(cs.r, cs.g, cs.b)
+  const lumF = relativeLuminance(cf.r, cf.g, cf.b)
+  const darker = lumS <= lumF ? cs : cf
+  return `rgb(${darker.r}, ${darker.g}, ${darker.b})`
+}
+
+// 获取点 (x, y) 绕中心点 (centerX, centerY) 旋转 rotation° 后的新坐标
+export function getRotatedPosition(
+  x: number,
+  y: number,
+  centerX: number,
+  centerY: number,
+  rotation: number
+) {
+  const rad = (rotation * Math.PI) / 180 // 转弧度
+
+  // 平移到中心点为原点
+  const dx = x - centerX
+  const dy = y - centerY
+
+  // 旋转公式
+  const rx = dx * Math.cos(rad) - dy * Math.sin(rad)
+  const ry = dx * Math.sin(rad) + dy * Math.cos(rad)
+
+  // 平移回去
+  return {
+    x: rx + centerX,
+    y: ry + centerY,
+  }
+}
+
+

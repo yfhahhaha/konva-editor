@@ -652,7 +652,7 @@
       anchorStrokeWidth: 3,
       anchorSize: 8,
       anchorCornerRadius: 5,
-      rotateEnabled: false,
+      rotateEnabled: true,
     }
     // 虚线框
     const transformerDashConfig = {

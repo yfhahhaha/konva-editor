@@ -9,6 +9,7 @@
     }
   ],
   "compilerOptions": {
+    "lib": ["es2022", "dom", "esnext.intl"],
     "jsx": "preserve",
     "jsxImportSource": "vue",
     "paths": {

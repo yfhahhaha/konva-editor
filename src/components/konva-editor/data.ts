@@ -82,6 +82,28 @@ export const exampleData =
                 draggable: true,
               },
             },
+            {
+              type: 'v-text',
+              config: {
+                id: 'demo_edit_template_title2',
+                text: '测试文本测试文本测试文本',
+                x: 50,
+                y: 150,
+                width: 500,
+                fontSize: 32,
+                align: 'center',
+                fontStyle: '900',
+                lineHeight: 1.1,
+                fill: '#ffffff',
+                stroke: '#94ff05',
+                strokeWidth: 5,
+                fillAfterStrokeEnabled: true,
+                draggable: true,
+                background: 'pink',
+                bgPadding: [8, 10, 8, 10],
+                bgCornerRadius: 8
+              },
+            },
           ]
         },
         {

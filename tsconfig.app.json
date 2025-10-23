@@ -3,6 +3,7 @@
   "include": ["env.d.ts", "src/**/*.d.ts", "src/**/*", "src/**/*.vue"],
   "exclude": ["src/**/__tests__/*"],
   "compilerOptions": {
+    "lib": ["es2022", "dom", "esnext.intl"],
     "composite": true,
     "baseUrl": ".",
     "paths": {
