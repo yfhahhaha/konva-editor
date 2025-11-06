@@ -633,7 +633,7 @@
       const lineEnd = currentIndex + lineLength
 
       // 检查当前行是否与选区重叠
-      if (start < lineEnd && end > lineStart) {
+      if (start <= lineEnd && end > lineStart) {
         const selectionStartInLine = Math.max(0, start - lineStart)
         const selectionEndInLine = Math.min(lineLength, end - lineStart)
 
@@ -655,7 +655,7 @@
         }
       }
 
-      currentIndex += lineLength + 1
+      currentIndex += lineLength
     }
 
     selectionRects.value = rects
